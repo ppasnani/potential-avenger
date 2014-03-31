@@ -115,4 +115,12 @@ public class Behaviour {
 		this.setPointsValue();
 	}
 	
+	public boolean equals(Behaviour otherBehaviour){
+		return otherBehaviour.behaviourName.equals(this) && 
+				otherBehaviour.benefitLevel == this.benefitLevel &&
+				otherBehaviour.completePriority == this.completePriority &&
+				otherBehaviour.difficultLevel == this.difficultLevel &&
+				otherBehaviour.pointValue == this.pointValue &&
+				otherBehaviour.timePriority == this.timePriority;
+	}
 }

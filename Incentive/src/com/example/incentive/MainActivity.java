@@ -48,7 +48,7 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        
+        //this.populateBehaviourList();
         //Get reference to add behaviour button
         Button addBehaviourButton = (Button) findViewById(R.id.bAddBehaviour);
         addBehaviourButton.setOnClickListener(new OnClickListener(){
@@ -139,7 +139,8 @@ public class MainActivity extends Activity {
 						//Use reward dollars to create nice alert
 						//float rewardDollars = getDollarValue(setExchangeRate, host);
 						//For now, just subtract the points from the final and update the total
-						host.resetPoints();
+						//host.resetPoints();
+						host.setPoints(0);
 						//And update the points total
 						//host.writePointsToFile();				        
 					}
@@ -162,7 +163,7 @@ public class MainActivity extends Activity {
     public void onResume(){
     	super.onResume();
     	Log.i(TAG, "onResume");    	
-        this.populateBehaviourList();
+    	this.populateBehaviourList();
         this.updatePointsField();
     }
     
@@ -181,7 +182,8 @@ public class MainActivity extends Activity {
     	
     	if (savedBehaviours != null){
     		    	
-    		final ArrayAdapter<Behaviour> adapter = new ArrayAdapter<Behaviour>(this, android.R.layout.simple_list_item_1, savedBehaviours);
+    		ArrayAdapter<Behaviour> adapter = new ArrayAdapter<Behaviour>(this, android.R.layout.simple_list_item_1, savedBehaviours);        	
+
         	behaviourList.setAdapter(adapter);
         	Log.i(TAG, "populating");
         	
@@ -193,6 +195,8 @@ public class MainActivity extends Activity {
 					// TODO Auto-generated method stub
 					//A behaviour has been completed and clicked so
 					//add the new points and update the text field
+					ListView viewList = (ListView) arg0;
+					ArrayAdapter<Behaviour> adapter = (ArrayAdapter<Behaviour>) viewList.getAdapter();
 					Behaviour clicked = adapter.getItem(arg2);
 					Log.i(TAG, "Behaviour list clicked: " + arg2 + " " + clicked.toString());
 					//Add the new points
@@ -206,7 +210,7 @@ public class MainActivity extends Activity {
         	behaviourList.setOnItemLongClickListener(new OnItemLongClickListener(){
 
 				@Override
-				public boolean onItemLongClick(AdapterView<?> arg0, View arg1,
+				public boolean onItemLongClick(final AdapterView<?> arg0, View arg1,
 						int arg2, long arg3) {
 					// TODO Auto-generated method stub
 					//Alert user that behavior already exists so do nothing
@@ -218,13 +222,28 @@ public class MainActivity extends Activity {
 					alert.setPositiveButton(R.string.button_okay, new DialogInterface.OnClickListener() {								
 						@Override
 						public void onClick(DialogInterface dialog, int which) {
-							// TODO Auto-generated method stub
-							//***************************************************************//
-					    	//I WAS HERE. TRYING TO FIGURE OUT HOW TO REMOVE THE BEHAVIOUR
-							//FROM THE LIST SAFELY.
-					    	//***************************************************************//
-							//adapter.remove(adapter.getItem(behaviourClicked));
+							ListView viewList = (ListView) arg0;
+							ArrayAdapter<Behaviour> adapter = (ArrayAdapter<Behaviour>) viewList.getAdapter();
 							
+							Behaviour toRemove = adapter.getItem(behaviourClicked);
+							Log.i(TAG, "Behaviour list held: " + toRemove.getBehaviourName() + " i: " + behaviourClicked);
+							
+							Behaviour[] newBehaviours  = new Behaviour[adapter.getCount() - 1];
+							for (int i = 0; i < behaviourClicked; i++){
+								newBehaviours[i] = adapter.getItem(i);
+							}
+							for (int i = behaviourClicked; i < adapter.getCount() - 1; i++){
+								newBehaviours[i] = adapter.getItem(i+1);
+							}
+							MainActivity hostActivity = ((MainActivity)adapter.getContext());
+							//adapter = new ArrayAdapter<Behaviour>(adapter.getContext(), android.R.layout.simple_list_item_1, newBehaviours);
+					    	ListView behaviourList = (ListView) findViewById(R.id.behaviourList);
+					    	ArrayAdapter<Behaviour> newAdapter = new ArrayAdapter<Behaviour>(hostActivity, android.R.layout.simple_list_item_1, newBehaviours);
+							behaviourList.setAdapter(newAdapter);
+							//Remove behaviour from the saved file						
+							hostActivity.removeBehaviourFromFile(toRemove);
+							//Correct for the fact that long click includes a click
+							hostActivity.setPoints(hostActivity.getPoints() - toRemove.getPointsValue());
 						}
 					});
 					
@@ -232,16 +251,20 @@ public class MainActivity extends Activity {
 						
 						@Override
 						public void onClick(DialogInterface dialog, int which) {
-							// TODO Auto-generated method stub
-							
+							ListView viewList = (ListView) arg0;
+							ArrayAdapter<Behaviour> adapter = (ArrayAdapter<Behaviour>) viewList.getAdapter();
+							//
+							//Correct for the fact that long click includes a click
+							MainActivity hostActivity = ((MainActivity)adapter.getContext());
+							hostActivity.setPoints(hostActivity.getPoints() - adapter.getItem(behaviourClicked).getPointsValue());
 						}
 					});
 					//Show the alert
 					alert.show();
 					return false;
-				}
-        		
-        	});
+				}        		
+        	});    	
+        	
     	}
     }
     
@@ -279,14 +302,17 @@ public class MainActivity extends Activity {
     	}//Else result was not OK, so no need to do anything
     }
     
-    //Requires:
-    //Ensures: Resets points total for this instance to 0 and updates
+    //Requires: numPoints >= 0
+    //Ensures: Sets points total for this instance to 0 and updates
     //			the textView
-    public void resetPoints(){
-    	this.numPoints = 0;
-        this.updatePointsField();
+    
+    public void setPoints(int newPoints){
+    	if (newPoints >= 0){
+	    	this.numPoints = newPoints;    	
+	    	this.updatePointsField();
+    	}
     }
-
+    
     //Requires: An instantiated MainActivity and existing TextView
     //Ensures: Sets the textview to display the appropriate number of points
     private void updatePointsField(){
@@ -406,6 +432,57 @@ public class MainActivity extends Activity {
     	
     }
     
+    //Requires: The behaviour that has to be removed from the file
+    //Ensures: The behaviour is removed from the file
+    private void removeBehaviourFromFile(Behaviour removeBehaviour){
+    	//Just go through all the behaviours and write them to the file			
+		try {
+			FileInputStream checkExisting = openFileInput(MainActivity.BEHAVIOUR_FILE);
+			//If the behaviour is listed in the file
+			if (MainActivity.fileContains(removeBehaviour.getBehaviourName(), checkExisting)){
+				checkExisting = openFileInput(MainActivity.BEHAVIOUR_FILE);			
+				String fileString = MainActivity.getStringFromFile(checkExisting);
+				try {
+					checkExisting.close();
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+					Log.i(TAG, "removeBehaviour: Cannot close file");
+				}
+				String[] linesCurrentFile = fileString.split("\n");
+				StringBuffer newFileString = new StringBuffer();
+				
+				//Log.i(TAG, "file: " + fileString);
+				int i = 0;
+				//While the line in the file is not the entry of removeBehaviour
+				//keep appending it to the output file string
+				while(!linesCurrentFile[i].contains(removeBehaviour.getBehaviourName()) && i < linesCurrentFile.length){
+					newFileString.append(linesCurrentFile[i] + "\n");
+					i++;					
+				}
+				for (int j = i+1; j < linesCurrentFile.length; j++){
+					newFileString.append(linesCurrentFile[j] + "\n");
+				}				
+				try {
+					FileOutputStream fos = openFileOutput(MainActivity.BEHAVIOUR_FILE, Context.MODE_PRIVATE);
+					fos.write(newFileString.toString().getBytes());
+					fos.close();
+					Log.i(TAG, "removeBehaviour: Successfully removed " + removeBehaviour.getBehaviourName());
+
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+					Log.i(TAG, "removeBehaviour: Trouble converting data string to bytes and writing to file");
+				}
+			}
+		} catch (FileNotFoundException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+			Log.i(TAG, "removeBehaviour: Cannot open file");
+		}
+
+    }
+    
     //Requires: A non empty behaviourName, and a String containing the priority levels
     //			for different attributes formatted as a key, space, integer value, space
     //Ensures: The data is written to file in one line with the behavior data following
@@ -459,7 +536,8 @@ public class MainActivity extends Activity {
     //Requires: A checkString to search the existingFile for
     //Ensures: True if the checkString occurs in the file
     //			False if the checkString does not appear in the file
-    public static boolean fileContains(String checkString, FileInputStream existingFile){    	
+    public static boolean fileContains(String checkString, FileInputStream existingFile){
+    	
     	String fileContents = MainActivity.getStringFromFile(existingFile);
     	//Close the opened file after the file data has been read
     	try {
